@@ -5,6 +5,8 @@ services:
       context: ./app
       dockerfile: Dockerfile
     env_file: .env
+    environment:
+      - DOMAIN=localhost:5006
     ports:
      - 5006:5006
     volumes:
