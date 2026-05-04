@@ -201,6 +201,62 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 
     if data_plot.finalize() is not None: plots.append(data_plot)
 
+    # --- High-Speed Flight Analysis ---
+
+    # Ground Speed vs Time
+    data_plot = DataPlot(data, plot_config, 'vehicle_local_position',
+                         y_start=0, y_axis_label='[m/s]',
+                         title='Ground Speed',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(
+        [lambda data: ('groundspeed', np.sqrt(data['vx']**2 + data['vy']**2))],
+        colors8[0:1], ['Ground Speed Estimated [m/s]'])
+    data_plot.change_dataset('vehicle_gps_position')
+    data_plot.add_graph(['vel_m_s'], colors8[1:2], ['Ground Speed GPS [m/s]'])
+    plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # Throttle / Thrust vs Time
+    data_plot = DataPlot(data, plot_config, actuator_controls_0.thrust_sp_topic,
+                         y_start=0, y_axis_label='',
+                         title='Throttle / Thrust',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    if actuator_controls_0.thrust_z_neg is not None:
+        data_plot.add_graph(
+            [lambda data: ('thrust', actuator_controls_0.thrust_z_neg)],
+            colors8[0:1], ['Thrust (up, actuator)'])
+    if actuator_controls_0.thrust_x is not None:
+        data_plot.add_graph(
+            [lambda data: ('thrust_x', actuator_controls_0.thrust_x)],
+            colors8[2:3], ['Thrust (forward, actuator)'])
+    data_plot.change_dataset('manual_control_setpoint')
+    data_plot.add_graph(
+        [manual_control_sp_controls[3]],
+        colors8[1:2], ['Manual Throttle ' + manual_control_sp_throttle_range])
+    plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # Roll & Pitch Angles vs Time (combined — for high-speed correlation analysis)
+    data_plot = DataPlot(data, plot_config, 'vehicle_attitude',
+                         y_axis_label='[deg]',
+                         title='Roll & Pitch Angles',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(
+        [lambda data: ('roll', np.rad2deg(data['roll'])),
+         lambda data: ('pitch', np.rad2deg(data['pitch']))],
+        colors8[0:2], ['Roll [deg]', 'Pitch [deg]'], mark_nan=True)
+    data_plot.change_dataset('vehicle_attitude_setpoint')
+    data_plot.add_graph(
+        [lambda data: ('roll_d', np.rad2deg(data['roll_d'])),
+         lambda data: ('pitch_d', np.rad2deg(data['pitch_d']))],
+        [colors8[4], colors8[5]], ['Roll Setpoint [deg]', 'Pitch Setpoint [deg]'],
+        use_step_lines=True)
+    plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
     # VTOL tailistter orientation conversion, if relevant
     if is_vtol_tailsitter:
         [tailsitter_attitude, tailsitter_rates, tailsitter_rates_setpoint] = tailsitter_orientation(
@@ -309,6 +365,12 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                         ['X Setpoint', 'Y Setpoint', 'Z Setpoint'], use_step_lines=True)
     plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # Velocity FFT
+    data_plot = DataPlotFFT(data, plot_config, 'vehicle_local_position',
+                            title='Velocity FFT')
+    data_plot.add_graph(['vx', 'vy', 'vz'], colors3, ['VX', 'VY', 'VZ'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
@@ -753,6 +815,13 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             data_plot.add_graph(['x', 'y', 'z'], ['X', 'Y', 'Z'])
             if data_plot.finalize() is not None: plots.append(data_plot)
 
+            # FFT
+            data_plot = DataPlotFFT(data, plot_config, 'sensor_accel_fifo_virtual',
+                                    title=f'Raw Acceleration FFT (FIFO, IMU{instance})',
+                                    topic_instance=instance)
+            data_plot.add_graph(['x', 'y', 'z'], colors3, ['X', 'Y', 'Z'])
+            if data_plot.finalize() is not None: plots.append(data_plot)
+
             # sampling regularity
             data_plot = DataPlot(data, plot_config, 'sensor_accel_fifo', y_range=Range1d(0, 25e3),
                                  y_axis_label='[us]',
@@ -790,6 +859,13 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                                      title=f'Gyro Power Spectral Density (FIFO, IMU{instance})',
                                      plot_height='normal', x_range=x_range, topic_instance=instance)
             data_plot.add_graph(['x', 'y', 'z'], ['X', 'Y', 'Z'])
+            if data_plot.finalize() is not None: plots.append(data_plot)
+
+            # FFT
+            data_plot = DataPlotFFT(data, plot_config, 'sensor_gyro_fifo_virtual',
+                                    title=f'Raw Gyroscope FFT (FIFO, IMU{instance})',
+                                    topic_instance=instance)
+            data_plot.add_graph(['x', 'y', 'z'], colors3, ['X', 'Y', 'Z'])
             if data_plot.finalize() is not None: plots.append(data_plot)
 
 
@@ -847,6 +923,13 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     data_plot.add_graph(['noise_per_ms', 'jamming_indicator'], colors3[0:2],
                         ['Noise per ms', 'Jamming Indicator'])
     plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # SensorGPS Velocity FFT
+    data_plot = DataPlotFFT(data, plot_config, 'vehicle_gps_position',
+                            title='SensorGPS Velocity FFT')
+    data_plot.add_graph(['vel_n_m_s', 'vel_e_m_s', 'vel_d_m_s'],
+                        colors3, ['North', 'East', 'Down'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
