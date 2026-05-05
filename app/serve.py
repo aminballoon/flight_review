@@ -92,6 +92,7 @@ if args.host is not None: server_kwargs['host'] = args.host
 if args.allow_websocket_origin is not None:
     server_kwargs['allow_websocket_origin'] = args.allow_websocket_origin
 server_kwargs['websocket_max_message_size'] = 100 * 1024 * 1024
+server_kwargs['session_token_expiration'] = 600000  # 10 minutes (default 5 min is too short for large logs)
 
 # increase the maximum upload size to support files larger than 2GB
 server_kwargs['http_server_kwargs'] = {'max_buffer_size': 4 * 1024 * 1024 * 1024}
