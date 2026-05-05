@@ -925,11 +925,23 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
     if data_plot.finalize() is not None: plots.append(data_plot)
 
-    # SensorGPS Velocity FFT
-    data_plot = DataPlotFFT(data, plot_config, 'vehicle_gps_position',
-                            title='SensorGPS Velocity FFT')
-    data_plot.add_graph(['vel_n_m_s', 'vel_e_m_s', 'vel_d_m_s'],
-                        colors3, ['North', 'East', 'Down'])
+    # SensorGPS Velocity (N/E/D) vs Time
+    # NOTE: GPS sampling rate (~5-10 Hz) is too low for a meaningful FFT,
+    # so this is a regular time-series plot instead.
+    data_plot = DataPlot(data, plot_config, 'vehicle_gps_position',
+                         y_axis_label='[m/s]', title='SensorGPS Velocity',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    try:
+        gps_fields = ulog.get_dataset('vehicle_gps_position').data
+        if 'vel_n_m_s' in gps_fields and 'vel_e_m_s' in gps_fields and 'vel_d_m_s' in gps_fields:
+            data_plot.add_graph(['vel_n_m_s', 'vel_e_m_s', 'vel_d_m_s'],
+                                colors3, ['North [m/s]', 'East [m/s]', 'Down [m/s]'])
+        else:  # COMPATIBILITY: newer format may only have speed magnitude
+            data_plot.add_graph(['vel_m_s'], colors3[0:1], ['Speed [m/s]'])
+    except (KeyError, IndexError):
+        pass
+    plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
