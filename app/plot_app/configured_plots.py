@@ -491,6 +491,84 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     except (KeyError, IndexError) as error:
         pass
 
+    # Wind Speed Components (North, East, Magnitude)
+    try:
+        wind_dataset = ulog.get_dataset('wind')
+        if wind_dataset is not None:
+            data_plot = DataPlot(data, plot_config, 'wind',
+                                 y_axis_label='[m/s]', title='Wind Speed Components',
+                                 plot_height='small', changed_params=changed_params,
+                                 x_range=x_range)
+            data_plot.add_graph(
+                ['windspeed_north', 'windspeed_east',
+                 lambda data: ('wind_magnitude',
+                               np.sqrt(data['windspeed_north']**2 +
+                                       data['windspeed_east']**2))],
+                [colors8[0], colors8[1], colors8[2]],
+                ['Wind North [m/s]', 'Wind East [m/s]', 'Wind Magnitude [m/s]'])
+            plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+            if data_plot.finalize() is not None: plots.append(data_plot)
+    except (KeyError, IndexError):
+        pass
+
+    # Headwind / Crosswind Analysis
+    # Decomposes the wind vector relative to the drone's current flight direction.
+    # Headwind > 0: wind opposes motion (drone fights the wind).
+    # Headwind < 0: tailwind (wind aids the drone).
+    # Crosswind: signed lateral wind (+ = wind from left, - = wind from right).
+    try:
+        wind_dataset = ulog.get_dataset('wind')
+        vel_dataset = ulog.get_dataset('vehicle_local_position')
+
+        wind_t = wind_dataset.data['timestamp']
+        wind_n = wind_dataset.data['windspeed_north']
+        wind_e = wind_dataset.data['windspeed_east']
+
+        vel_t = vel_dataset.data['timestamp']
+        vx = vel_dataset.data['vx']  # North velocity [m/s]
+        vy = vel_dataset.data['vy']  # East velocity [m/s]
+
+        # Interpolate wind onto the velocity topic timestamps
+        wind_n_interp = np.interp(vel_t, wind_t, wind_n)
+        wind_e_interp = np.interp(vel_t, wind_t, wind_e)
+
+        # Only compute decomposition when the drone is moving fast enough
+        # to have a meaningful flight direction.
+        drone_speed = np.sqrt(vx**2 + vy**2)
+        valid = drone_speed > 0.5  # [m/s] threshold
+
+        vx_hat = np.where(valid, vx / np.where(valid, drone_speed, 1.0), 0.0)
+        vy_hat = np.where(valid, vy / np.where(valid, drone_speed, 1.0), 0.0)
+
+        # Headwind: projection of wind onto the OPPOSITE of the flight direction.
+        # Positive = opposing, Negative = aiding (tailwind).
+        headwind = -(wind_n_interp * vx_hat + wind_e_interp * vy_hat)
+        headwind = np.where(valid, headwind, np.nan)
+
+        # Crosswind: component perpendicular to flight direction (signed).
+        # Positive = wind from the left, Negative = wind from the right.
+        crosswind = wind_n_interp * vy_hat - wind_e_interp * vx_hat
+        crosswind = np.where(valid, crosswind, np.nan)
+
+        data_plot = DataPlot(data, plot_config, 'vehicle_local_position',
+                             y_axis_label='[m/s]',
+                             title='Headwind / Crosswind Analysis',
+                             plot_height='small', changed_params=changed_params,
+                             x_range=x_range)
+        data_plot.add_graph(
+            [lambda d, hw=headwind: ('headwind', hw),
+             lambda d, cw=crosswind: ('crosswind', cw),
+             lambda d, spd=drone_speed: ('groundspeed', spd)],
+            [colors8[0], colors8[2], colors8[4]],
+            ['Headwind + / Tailwind - [m/s]',
+             'Crosswind (L+/R-) [m/s]',
+             'Ground Speed [m/s]'],
+            mark_nan=True)
+        plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+        if data_plot.finalize() is not None: plots.append(data_plot)
+    except (KeyError, IndexError):
+        pass
+
     # TECS (fixed-wing or VTOLs)
     data_plot = DataPlot(data, plot_config, 'tecs_status', y_start=0, title='TECS',
                          y_axis_label='[m/s]', plot_height='small',
