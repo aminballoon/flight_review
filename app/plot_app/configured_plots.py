@@ -492,24 +492,30 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         pass
 
     # Wind Speed Components (North, East, Magnitude)
+    # Topic name: 'wind' (PX4 >= v1.13) or 'wind_estimate' (older firmware).
+    # Only present when EKF2 wind estimation is enabled (fixed-wing / airspeed sensor).
+    _wind_topic = 'wind' if any(d.name == 'wind' for d in data) \
+        else ('wind_estimate' if any(d.name == 'wind_estimate' for d in data) else None)
     try:
-        wind_dataset = ulog.get_dataset('wind')
-        if wind_dataset is not None:
-            data_plot = DataPlot(data, plot_config, 'wind',
-                                 y_axis_label='[m/s]', title='Wind Speed Components',
-                                 plot_height='small', changed_params=changed_params,
-                                 x_range=x_range)
-            data_plot.add_graph(
-                ['windspeed_north', 'windspeed_east',
-                 lambda data: ('wind_magnitude',
-                               np.sqrt(data['windspeed_north']**2 +
-                                       data['windspeed_east']**2))],
-                [colors8[0], colors8[1], colors8[2]],
-                ['Wind North [m/s]', 'Wind East [m/s]', 'Wind Magnitude [m/s]'])
-            plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
-            if data_plot.finalize() is not None: plots.append(data_plot)
+        if _wind_topic is None:
+            raise IndexError('no wind topic')
+        wind_dataset = ulog.get_dataset(_wind_topic)
+        data_plot = DataPlot(data, plot_config, _wind_topic,
+                             y_axis_label='[m/s]', title='Wind Speed Components',
+                             plot_height='small', changed_params=changed_params,
+                             x_range=x_range)
+        data_plot.add_graph(
+            ['windspeed_north', 'windspeed_east',
+             lambda data: ('wind_magnitude',
+                           np.sqrt(data['windspeed_north']**2 +
+                                   data['windspeed_east']**2))],
+            [colors8[0], colors8[1], colors8[2]],
+            ['Wind North [m/s]', 'Wind East [m/s]', 'Wind Magnitude [m/s]'])
+        plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+        if data_plot.finalize() is not None: plots.append(data_plot)
     except (KeyError, IndexError):
         pass
+
 
     # Headwind / Crosswind Analysis
     # Decomposes the wind vector relative to the drone's current flight direction.
@@ -517,7 +523,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     # Headwind < 0: tailwind (wind aids the drone).
     # Crosswind: signed lateral wind (+ = wind from left, - = wind from right).
     try:
-        wind_dataset = ulog.get_dataset('wind')
+        if _wind_topic is None:
+            raise IndexError('no wind topic')
+        wind_dataset = ulog.get_dataset(_wind_topic)
         vel_dataset = ulog.get_dataset('vehicle_local_position')
 
         wind_t = wind_dataset.data['timestamp']
@@ -568,6 +576,7 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         if data_plot.finalize() is not None: plots.append(data_plot)
     except (KeyError, IndexError):
         pass
+
 
     # TECS (fixed-wing or VTOLs)
     data_plot = DataPlot(data, plot_config, 'tecs_status', y_start=0, title='TECS',
